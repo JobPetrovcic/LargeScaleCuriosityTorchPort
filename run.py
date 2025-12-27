@@ -26,7 +26,7 @@ from wrappers import (
 # Use AsyncVectorEnv from Gym
 from gym.vector import AsyncVectorEnv
 
-def load_config(config_path="config.yaml"):
+def load_config(config_path="configs/config.yaml"):
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
 
