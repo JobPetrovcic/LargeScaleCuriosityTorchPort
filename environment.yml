@@ -1,0 +1,28 @@
+name: curiosity-pytorch
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=12.1  # Adjust based on your GPU driver
+  - numpy<2.0          # Numpy 2.0 breaks many older RL libraries
+  - mpi4py             # Required by utils.py imports
+  - pyyaml             # For config.yaml
+  - opencv             # For image processing
+  - pandas             # Required by baselines logger
+  - scipy
+  - pip
+  - pip:
+    - gym==0.26.2      # The bridge version compatible with modern step API
+    - gym[atari]
+    - gym[accept-rom-license]
+    - gym-retro        # For Mario/Sonic environments
+    - cloudpickle
+    - pillow
+    # We install baselines for the logger/monitor dependencies
+    - git+https://github.com/openai/baselines.git
