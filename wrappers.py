@@ -383,7 +383,7 @@ def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bo
     # To be exact, we should probably stick to standard gym FrameStack 
     # OR implement the LazyFrames one if memory is an issue. 
     # Given we are single-gpu, standard Gym FrameStack is likely fine.
-    from gym.Wrappers import FrameStack
+    from gym.wrappers import FrameStack
 
     # gym.undo_logger_setup()
     env = retro.make('SuperMarioBros-Nes', 'Level1-1')
@@ -399,7 +399,7 @@ def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bo
 def make_multi_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
     import gym
     import retro
-    from gym.Wrappers import FrameStack
+    from gym.wrappers import FrameStack
     # gym.undo_logger_setup()
     game_env = env = retro.make('Pong-Atari2600', players=2)
     env = RetroALEActions(env, game_env.BUTTONS, n_players=2)
@@ -411,7 +411,7 @@ def make_multi_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
     return env
 
 def make_robo_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
-    from gym.Wrappers import FrameStack
+    from gym.wrappers import FrameStack
     import roboenvs as robo
 
     env = robo.make_robopong()
@@ -425,7 +425,7 @@ def make_robo_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
     return env
 
 def make_robo_hockey(frame_stack: bool = True) -> gym.Env[Any, Any]:
-    from gym.Wrappers import FrameStack
+    from gym.wrappers import FrameStack
     import roboenvs as robo
 
     env = robo.make_robohockey()

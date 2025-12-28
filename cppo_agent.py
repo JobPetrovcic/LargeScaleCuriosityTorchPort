@@ -207,7 +207,9 @@ class PpoOptimizer(object):
         b_advs = resh(self.buf_advs)
         
         # Last obs: (N, S, ...) -> (N*S, 1, ...)
-        b_last_obs = self.rollout.buf_obs_last.reshape(self.nenvs * self.nsegs_per_env, 1, *self.ob_space.shape)
+        # buf_obs_last is (N, S, C, H, W). We want (N*S, 1, C, H, W).
+        c, h, w = self.ob_space.shape[2], self.ob_space.shape[0], self.ob_space.shape[1]
+        b_last_obs = self.rollout.buf_obs_last.reshape(self.nenvs * self.nsegs_per_env, 1, c, h, w)
         
         mblossvals = []
 
