@@ -86,6 +86,15 @@ class ProcessFrame84(gym.ObservationWrapper):
     def observation(self, obs: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         return ProcessFrame84.process(obs, crop=self.crop)
 
+    def reset(self, **kwargs: Any) -> Union[Any, Tuple[Any, Dict[str, Any]]]:
+        result = self.env.reset(**kwargs)
+        if isinstance(result, tuple):
+            obs, info = result
+            return self.observation(obs), info
+        else:
+            obs = result
+            return self.observation(obs), {}
+
     @staticmethod
     def process(frame: np.ndarray[Any, Any], crop: bool = True) -> np.ndarray[Any, Any]:
         if frame.size == 210 * 160 * 3:
@@ -94,6 +103,8 @@ class ProcessFrame84(gym.ObservationWrapper):
             img = np.reshape(frame, [250, 160, 3]).astype(np.float32)
         elif frame.size == 224 * 240 * 3:  # mario resolution
             img = np.reshape(frame, [224, 240, 3]).astype(np.float32)
+        elif frame.size == 240 * 256 * 3:  # gym-super-mario-bros resolution
+            img = np.reshape(frame, [240, 256, 3]).astype(np.float32)
         else:
             assert False, "Unknown resolution." + str(frame.size)
         img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
@@ -233,13 +244,13 @@ class MarioXReward(gym.Wrapper[Any, Any]):
             ob, reward, done, info = step_result
             term, trunc = done, False
             
-        levellow = info.get("levelLo", 0)
-        levelhigh = info.get("levelHi", 0)
-        xscrollHi = info.get("xscrollHi", 0)
-        xscrollLo = info.get("xscrollLo", 0)
+        # gym-super-mario-bros info keys
+        world = info.get("world", 0)
+        stage = info.get("stage", 0)
+        x_pos = info.get("x_pos", 0)
         
-        currentx = xscrollHi * 256 + xscrollLo
-        new_level = [levellow, levelhigh]
+        currentx = x_pos
+        new_level = [world, stage]
         if new_level != self.current_level:
             self.current_level = new_level
             self.current_max_x = 0.
@@ -374,26 +385,22 @@ class NoReward(gym.Wrapper[Any, Any]):
 
 def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bool = False) -> gym.Env[Any, Any]:
     assert clip_rewards is False
-    import retro
-    # Modern FrameStack is in gym.Wrapper[Any, Any]s or gym.Wrapper[Any, Any]s.frame_stack
-    # We use gym.Wrapper[Any, Any]s.FrameStack which is standard.
-    # Note: baselines.common.atari_wrappers.FrameStack is slightly different (lazy frames), 
-    # but here we likely want standard behavior or to check if we need lazy frames.
-    # The original code imported from baselines. 
-    # To be exact, we should probably stick to standard gym FrameStack 
-    # OR implement the LazyFrames one if memory is an issue. 
-    # Given we are single-gpu, standard Gym FrameStack is likely fine.
-    from gym.wrappers import FrameStack
+    # BIG TODO: something about this not being equivalent to the original paper version
+    import gym_super_mario_bros
+    from nes_py.wrappers import JoypadSpace
+    from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
+    # from gym.wrappers import FrameStack # Use local FrameStack which handles API diffs
 
     # gym.undo_logger_setup()
-    env = retro.make('SuperMarioBros-Nes', 'Level1-1')
-    buttons = env.BUTTONS
+    # env = gym_super_mario_bros.make('SuperMarioBros-1-1-v0')
+    from gym_super_mario_bros.smb_env import SuperMarioBrosEnv
+    env = SuperMarioBrosEnv(target=(1, 1))
     env = MarioXReward(env)
     env = FrameSkip(env, 4)
     env = ProcessFrame84(env, crop=crop)
     if frame_stack:
         env = FrameStack(env, 4)
-    env = LimitedDiscreteActions(env, buttons)
+    env = JoypadSpace(env, SIMPLE_MOVEMENT)
     return env
 
 def make_multi_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
