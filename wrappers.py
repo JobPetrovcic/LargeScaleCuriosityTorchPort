@@ -10,7 +10,7 @@ from PIL import Image
 # Helper to detect gym version for API compatibility
 is_modern_gym = hasattr(gym, 'version') and gym.__version__ >= '0.26'
 
-def unwrap(env: gym.Env) -> gym.Env:
+def unwrap(env: gym.Env[Any, Any]) -> gym.Env[Any, Any]:
     if hasattr(env, "unwrapped"):
         return env.unwrapped
     elif hasattr(env, "env"):
@@ -20,8 +20,8 @@ def unwrap(env: gym.Env) -> gym.Env:
     else:
         return env
 
-class MaxAndSkipEnv(gym.Wrapper):
-    def __init__(self, env: gym.Env, skip: int = 4):
+class MaxAndSkipEnv(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any], skip: int = 4):
         """Return only every `skip`-th frame"""
         super().__init__(env)
         # most recent raw observations (for max pooling across time steps)
@@ -78,16 +78,16 @@ class MaxAndSkipEnv(gym.Wrapper):
         return obs
 
 class ProcessFrame84(gym.ObservationWrapper):
-    def __init__(self, env: gym.Env, crop: bool = True):
+    def __init__(self, env: gym.Env[Any, Any], crop: bool = True):
         self.crop = crop
         super(ProcessFrame84, self).__init__(env)
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8)
 
-    def observation(self, obs: np.ndarray) -> np.ndarray:
+    def observation(self, obs: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         return ProcessFrame84.process(obs, crop=self.crop)
 
     @staticmethod
-    def process(frame: np.ndarray, crop: bool = True) -> np.ndarray:
+    def process(frame: np.ndarray[Any, Any], crop: bool = True) -> np.ndarray[Any, Any]:
         if frame.size == 210 * 160 * 3:
             img = np.reshape(frame, [210, 160, 3]).astype(np.float32)
         elif frame.size == 250 * 160 * 3:
@@ -104,8 +104,8 @@ class ProcessFrame84(gym.ObservationWrapper):
         x_t = np.reshape(x_t, [84, 84, 1])
         return x_t.astype(np.uint8)
 
-class ExtraTimeLimit(gym.Wrapper):
-    def __init__(self, env: gym.Env, max_episode_steps: Optional[int] = None):
+class ExtraTimeLimit(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any], max_episode_steps: Optional[int] = None):
         super().__init__(env)
         self._max_episode_steps = max_episode_steps
         self._elapsed_steps = 0
@@ -119,7 +119,7 @@ class ExtraTimeLimit(gym.Wrapper):
             term, trunc = done, False
         
         self._elapsed_steps += 1
-        if self._max_episode_steps is not None and self._elapsed_steps > self._max_episode_steps:
+        if self._max_episode_steps is not None and self._elapsed_steps >= self._max_episode_steps:
             trunc = True
             
         if is_modern_gym:
@@ -131,8 +131,8 @@ class ExtraTimeLimit(gym.Wrapper):
         self._elapsed_steps = 0
         return self.env.reset(**kwargs)
 
-class AddRandomStateToInfo(gym.Wrapper):
-    def __init__(self, env: gym.Env):
+class AddRandomStateToInfo(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any]):
         super().__init__(env)
         self.random_state_copy: Optional[Any] = None
 
@@ -157,14 +157,14 @@ class AddRandomStateToInfo(gym.Wrapper):
         self.random_state_copy = copy(unwrap(self.env).np_random)
         return self.env.reset(**kwargs)
 
-class MontezumaInfoWrapper(gym.Wrapper):
+class MontezumaInfoWrapper(gym.Wrapper[Any, Any]):
     ram_map = {
         "room": dict(index=3),
         "x": dict(index=42),
         "y": dict(index=43),
     }
 
-    def __init__(self, env: gym.Env):
+    def __init__(self, env: gym.Env[Any, Any]):
         super(MontezumaInfoWrapper, self).__init__(env)
         self.visited: Set[Tuple[int, int, int]] = set()
         self.visited_rooms: Set[int] = set()
@@ -204,8 +204,8 @@ class MontezumaInfoWrapper(gym.Wrapper):
     def reset(self, **kwargs: Any) -> Union[Any, Tuple[Any, Dict[str, Any]]]:
         return self.env.reset(**kwargs)
 
-class MarioXReward(gym.Wrapper):
-    def __init__(self, env: gym.Env):
+class MarioXReward(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any]):
         super().__init__(env)
         self.current_level: List[int] = [0, 0]
         self.visited_levels: Set[Tuple[int, int]] = set()
@@ -265,7 +265,7 @@ class LimitedDiscreteActions(gym.ActionWrapper):
     KNOWN_BUTTONS = {"A", "B"}
     KNOWN_SHOULDERS = {"L", "R"}
 
-    def __init__(self, env: gym.Env, all_buttons: List[str], whitelist: Set[str] = KNOWN_BUTTONS | KNOWN_SHOULDERS):
+    def __init__(self, env: gym.Env[Any, Any], all_buttons: List[str], whitelist: Set[str] = KNOWN_BUTTONS | KNOWN_SHOULDERS):
         super().__init__(env)
         self._num_buttons = len(all_buttons)
         button_keys = {i for i in range(len(all_buttons)) if all_buttons[i] in whitelist & self.KNOWN_BUTTONS}
@@ -280,14 +280,14 @@ class LimitedDiscreteActions(gym.ActionWrapper):
         self._actions = acts
         self.action_space = gym.spaces.Discrete(len(self._actions))
 
-    def action(self, a: int) -> np.ndarray:
+    def action(self, a: int) -> np.ndarray[Any, Any]:
         mask = np.zeros(self._num_buttons)
         for i in self._actions[a]:
             mask[i] = 1
         return mask
 
-class FrameSkip(gym.Wrapper):
-    def __init__(self, env: gym.Env, n: int):
+class FrameSkip(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any], n: int):
         super().__init__(env)
         self.n = n
 
@@ -319,29 +319,28 @@ class FrameSkip(gym.Wrapper):
             return ob, totrew, terminated or truncated, info
 
 class OneChannel(gym.ObservationWrapper):
-    def __init__(self, env: gym.Env, crop: bool = True):
+    def __init__(self, env: gym.Env[Any, Any], crop: bool = True):
         self.crop = crop
         super(OneChannel, self).__init__(env)
         # Assuming input is uint8
         # shape is (84, 84, 1) usually based on usage
         self.observation_space = gym.spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8)
 
-    def observation(self, obs: np.ndarray) -> np.ndarray:
+    def observation(self, obs: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         return obs[:, :, 2:3]
 
 class RetroALEActions(gym.ActionWrapper):
-    def __init__(self, env: gym.Env, all_buttons: List[str], n_players: int = 1):
+    def __init__(self, env: gym.Env[Any, Any], all_buttons: List[str], n_players: int = 1):
         super().__init__(env)
         self.n_players = n_players
         self._num_buttons = len(all_buttons)
         bs = [-1, 0, 4, 5, 6, 7]
-        actions: List[List[int]] = []
-
+        
         def update_actions(old_actions: List[List[int]], offset: int = 0) -> List[List[int]]:
-            actions = []
+            actions : List[List[int]] = []
             for b in old_actions:
                 for button in bs:
-                    action = []
+                    action : List[int] = []
                     action.extend(b)
                     if button != -1:
                         action.append(button + offset)
@@ -354,14 +353,14 @@ class RetroALEActions(gym.ActionWrapper):
         self._actions = current_actions
         self.action_space = gym.spaces.Discrete(len(self._actions))
 
-    def action(self, a: int) -> np.ndarray:
+    def action(self, a: int) -> np.ndarray[Any, Any]:
         mask = np.zeros(self._num_buttons * self.n_players)
         for i in self._actions[a]:
             mask[i] = 1
         return mask
 
-class NoReward(gym.Wrapper):
-    def __init__(self, env: gym.Env):
+class NoReward(gym.Wrapper[Any, Any]):
+    def __init__(self, env: gym.Env[Any, Any]):
         super().__init__(env)
 
     def step(self, action: Any) -> Tuple[Any, float, bool, bool, Dict[str, Any]]:
@@ -373,19 +372,18 @@ class NoReward(gym.Wrapper):
             ob, rew, done, info = step_result
             return ob, 0.0, done, info
 
-def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bool = False) -> gym.Env:
+def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bool = False) -> gym.Env[Any, Any]:
     assert clip_rewards is False
-    import gym
     import retro
-    # Modern FrameStack is in gym.wrappers or gym.wrappers.frame_stack
-    # We use gym.wrappers.FrameStack which is standard.
+    # Modern FrameStack is in gym.Wrapper[Any, Any]s or gym.Wrapper[Any, Any]s.frame_stack
+    # We use gym.Wrapper[Any, Any]s.FrameStack which is standard.
     # Note: baselines.common.atari_wrappers.FrameStack is slightly different (lazy frames), 
     # but here we likely want standard behavior or to check if we need lazy frames.
     # The original code imported from baselines. 
     # To be exact, we should probably stick to standard gym FrameStack 
     # OR implement the LazyFrames one if memory is an issue. 
     # Given we are single-gpu, standard Gym FrameStack is likely fine.
-    from gym.wrappers import FrameStack
+    from gym.Wrappers import FrameStack
 
     # gym.undo_logger_setup()
     env = retro.make('SuperMarioBros-Nes', 'Level1-1')
@@ -398,10 +396,10 @@ def make_mario_env(crop: bool = True, frame_stack: bool = True, clip_rewards: bo
     env = LimitedDiscreteActions(env, buttons)
     return env
 
-def make_multi_pong(frame_stack: bool = True) -> gym.Env:
+def make_multi_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
     import gym
     import retro
-    from gym.wrappers import FrameStack
+    from gym.Wrappers import FrameStack
     # gym.undo_logger_setup()
     game_env = env = retro.make('Pong-Atari2600', players=2)
     env = RetroALEActions(env, game_env.BUTTONS, n_players=2)
@@ -412,8 +410,8 @@ def make_multi_pong(frame_stack: bool = True) -> gym.Env:
         env = FrameStack(env, 4)
     return env
 
-def make_robo_pong(frame_stack: bool = True) -> gym.Env:
-    from gym.wrappers import FrameStack
+def make_robo_pong(frame_stack: bool = True) -> gym.Env[Any, Any]:
+    from gym.Wrappers import FrameStack
     import roboenvs as robo
 
     env = robo.make_robopong()
@@ -426,8 +424,8 @@ def make_robo_pong(frame_stack: bool = True) -> gym.Env:
     env = AddRandomStateToInfo(env)
     return env
 
-def make_robo_hockey(frame_stack: bool = True) -> gym.Env:
-    from gym.wrappers import FrameStack
+def make_robo_hockey(frame_stack: bool = True) -> gym.Env[Any, Any]:
+    from gym.Wrappers import FrameStack
     import roboenvs as robo
 
     env = robo.make_robohockey()
@@ -464,8 +462,63 @@ class VecEnvAdapter:
         if len(result) == 5:
             obs, rews, terms, truncs, infos = result
             dones = terms | truncs
+            
+            if isinstance(infos, dict):
+                new_infos = [{} for _ in range(self.num_envs)]
+                for k, v in infos.items():
+                    if k.startswith("_"): continue
+                    if hasattr(v, '__len__') and len(v) == self.num_envs:
+                         for i in range(self.num_envs):
+                             new_infos[i][k] = v[i]
+                infos = new_infos
+
             return obs, rews, dones, infos
         return result
     
     def close(self) -> None:
         self.vector_env.close()
+
+class FrameStack(gym.Wrapper[Any, Any]):
+    def __init__(self, env, k):
+        super().__init__(env)
+        self.k = k
+        self.frames = deque([], maxlen=k)
+        shp = env.observation_space.shape
+        # Assume shape is (H, W, C)
+        self.observation_space = gym.spaces.Box(low=0, high=255, shape=(shp[0], shp[1], shp[2] * k), dtype=env.observation_space.dtype)
+
+    def reset(self, **kwargs):
+        ob = self.env.reset(**kwargs)
+        if isinstance(ob, tuple):
+            ob, info = ob
+        else:
+            info = {}
+            
+        for _ in range(self.k):
+            self.frames.append(ob)
+        
+        obs = self._get_ob()
+        if is_modern_gym:
+            return obs, info
+        return obs
+
+    def step(self, action):
+        step_result = self.env.step(action)
+        if len(step_result) == 5:
+            ob, reward, term, trunc, info = step_result
+            done = term or trunc
+        else:
+            ob, reward, done, info = step_result
+            term, trunc = done, False
+            
+        self.frames.append(ob)
+        obs = self._get_ob()
+        
+        if is_modern_gym:
+            return obs, reward, term, trunc, info
+        else:
+            return obs, reward, done, info
+
+    def _get_ob(self):
+        assert len(self.frames) == self.k
+        return np.concatenate(self.frames, axis=-1)

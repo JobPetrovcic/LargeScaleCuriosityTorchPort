@@ -24,23 +24,36 @@ def setup_tensorflow_session() -> None:
 def bcast_tf_vars_from_root(sess: Any, vars: Any) -> None:
     pass
 
-def get_mean_and_std(array: np.ndarray) -> Tuple[float, float]:
+def get_mean_and_std(array: np.ndarray[Any, Any]) -> Tuple[float, float]:
     mean = np.mean(array)
     std = np.std(array)
     return mean, std
 
-def random_agent_ob_mean_std(env: gym.Env, nsteps: int = 10000) -> Tuple[float, float]:
+def random_agent_ob_mean_std(env: gym.Env[Any, Any], nsteps: int = 10000) -> Tuple[float, float]:
     ob = env.reset()
+    if isinstance(ob, tuple):
+        ob = ob[0]
     obs = [np.asarray(ob)]
     for _ in range(nsteps):
         ac = env.action_space.sample()
-        ob, _, done, _ = env.step(ac)
+        step_result = env.step(ac)
+        if len(step_result) == 5:
+            ob, _, terminated, truncated, _ = step_result
+            done = terminated or truncated
+        else:
+            ob, _, done, _ = step_result
+            
         if done:
             ob = env.reset()
+            if isinstance(ob, tuple):
+                ob = ob[0]
         obs.append(np.asarray(ob))
     obs_arr = np.array(obs)
     mean = np.mean(obs_arr, axis=0).astype(np.float32)
     std = np.std(obs_arr, axis=0).mean().astype(np.float32)
+    # permute to C,H,W
+    mean = np.transpose(mean, (2, 0, 1))    
+
     return mean, std
 
 def normc_initializer(std: float = 1.0) -> Callable[[torch.Tensor], None]:
@@ -73,7 +86,7 @@ def layernorm(x: torch.Tensor, epsilon: float = 1e-8) -> torch.Tensor:
 
 class LayerNorm(nn.Module):
     def __init__(self, epsilon: float = 1e-8):
-        super().__init__()
+        super().__init__() # type:ignore
         self.epsilon = epsilon
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -81,13 +94,13 @@ class LayerNorm(nn.Module):
 
 class RunningMeanStd(nn.Module):
     def __init__(self, epsilon: float = 1e-4, shape: Tuple[int, ...] = ()):
-        super().__init__()
+        super().__init__() # type:ignore
         self.register_buffer("mean", torch.zeros(shape, dtype=torch.float64))
         self.register_buffer("var", torch.ones(shape, dtype=torch.float64))
         self.register_buffer("count", torch.tensor(epsilon, dtype=torch.float64))
         self.epsilon = epsilon
 
-    def update(self, x: Union[np.ndarray, torch.Tensor]) -> None:
+    def update(self, x: Union[np.ndarray[Any, Any], torch.Tensor]) -> None:
         if isinstance(x, np.ndarray):
             x = torch.from_numpy(x).to(self.mean.device).double()
         else:
@@ -106,11 +119,16 @@ class RunningMeanStd(nn.Module):
         m_b = batch_var * batch_count
         M2 = m_a + m_b + torch.square(delta) * self.count * batch_count / tot_count
         new_var = M2 / tot_count
-        self.mean[:] = new_mean
-        self.var[:] = new_var
-        self.count[:] = tot_count
+        if self.mean.dim() == 0:
+            self.mean.data = new_mean
+            self.var.data = new_var
+            self.count.data = tot_count
+        else:
+            self.mean[:] = new_mean
+            self.var[:] = new_var
+            self.count[:] = tot_count
 
-    def forward(self, x: Union[np.ndarray, torch.Tensor]) -> torch.Tensor:
+    def forward(self, x: Union[np.ndarray[Any, Any], torch.Tensor]) -> torch.Tensor:
         if isinstance(x, np.ndarray):
             x = torch.from_numpy(x).float().to(self.mean.device)
         return (x - self.mean.float()) / (torch.sqrt(self.var.float()) + 1e-8)
@@ -124,9 +142,10 @@ def unflatten_first_dim(x: torch.Tensor, shape_tensor: torch.Tensor) -> torch.Te
 
 class Conv2dSame(nn.Conv2d):
     def calc_same_pad(self, i: int, k: int, s: int, d: int) -> int:
-        return max((np.ceil(i / s) - 1) * s + (k - 1) * d + 1 - i, 0)
+        return int(max((np.ceil(i / s) - 1) * s + (k - 1) * d + 1 - i, 0))
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        x=input
         ih, iw = x.size()[-2:]
         pad_h = self.calc_same_pad(i=ih, k=self.kernel_size[0], s=self.stride[0], d=self.dilation[0])
         pad_w = self.calc_same_pad(i=iw, k=self.kernel_size[1], s=self.stride[1], d=self.dilation[1])
@@ -136,9 +155,10 @@ class Conv2dSame(nn.Conv2d):
         return super().forward(x)
 
 class ConvTranspose2dSame(nn.ConvTranspose2d):
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        out = super().forward(x)
-        n, c, h, w = x.shape
+    def forward(self, input: torch.Tensor, output_size: Optional[List[int]] = None) -> torch.Tensor:
+        x=input
+        out = super().forward(x, output_size)
+        _, _, h, w = x.shape
         target_h = h * self.stride[0]
         target_w = w * self.stride[1]
         oh, ow = out.shape[-2:]
@@ -149,8 +169,8 @@ class ConvTranspose2dSame(nn.ConvTranspose2d):
         return out
 
 class SmallConvNet(nn.Module):
-    def __init__(self, in_channels: int, feat_dim: int, nl: Callable, last_nl: Optional[Callable], layernormalize: bool):
-        super().__init__()
+    def __init__(self, in_channels: int, feat_dim: int, nl: Callable[[torch.Tensor], torch.Tensor], last_nl: Optional[Callable[[torch.Tensor], torch.Tensor]], layernormalize: bool):
+        super().__init__() # type:ignore
         self.in_channels = in_channels
         self.feat_dim = feat_dim
         self.nl = nl
@@ -166,7 +186,8 @@ class SmallConvNet(nn.Module):
         init_weights_fc(self.fc)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        assert x.shape[1] == self.in_channels, f"Input channel mismatch: expected {self.in_channels}, got {x.shape[1]}"
+        channel_dim = 1 if x.dim() == 4 else 2
+        assert x.shape[channel_dim] == self.in_channels, f"Input channel mismatch: expected {self.in_channels}, got {x.shape[channel_dim]}"
         x = self.nl(self.conv1(x))
         x = self.nl(self.conv2(x))
         x = self.nl(self.conv3(x))
@@ -179,8 +200,8 @@ class SmallConvNet(nn.Module):
         return x
 
 class SmallDeconvNet(nn.Module):
-    def __init__(self, feat_dim: int, nl: Callable, ch: int, positional_bias: bool):
-        super().__init__()
+    def __init__(self, feat_dim: int, nl: Callable[[torch.Tensor], torch.Tensor], ch: int, positional_bias: bool):
+        super().__init__() # type:ignore
         self.nl = nl
         self.ch = ch
         self.positional_bias = positional_bias
@@ -209,8 +230,8 @@ class SmallDeconvNet(nn.Module):
         return z
 
 class UNet(nn.Module):
-    def __init__(self, in_channels: int, feat_dim: int, nl: Callable):
-        super().__init__()
+    def __init__(self, in_channels: int, feat_dim: int, nl: Callable[[torch.Tensor], torch.Tensor]):
+        super().__init__() # type:ignore
         self.in_channels = in_channels
         self.feat_dim = feat_dim
         self.nl = nl
@@ -260,8 +281,8 @@ class UNet(nn.Module):
         l2 = self.nl(self.enc2(cond(l1)))
         l3 = self.nl(self.enc3(cond(l2)))
         
-        flat = l3.reshape(l3.size(0), -1)
-        z = self.nl(self.fc_in(cond(flat)))
+        flat = cond(l3).reshape(l3.size(0), -1)
+        z = self.nl(self.fc_in(flat))
         
         for i in range(4):
             res = self.nl(self.res_fc1[i](cond(z)))
@@ -273,15 +294,15 @@ class UNet(nn.Module):
         
         z_out = z_out + l3
         d1 = self.nl(self.dec1(cond(z_out)))
-        d1 = d1 + l2
+        d1 = torch.cat([d1, l2], dim=1)
         d2 = self.nl(self.dec2(cond(d1)))
-        d2 = d2 + l1
+        d2 = torch.cat([d2, l1], dim=1)
         out = self.dec3(cond(d2))
         
         out = out[:, :, 6:-6, 6:-6]
         return out
 
-def tile_images(array: np.ndarray, n_cols: Optional[int] = None, max_images: Optional[int] = None, div: int = 1) -> np.ndarray:
+def tile_images(array: np.ndarray[Any, Any], n_cols: Optional[int] = None, max_images: Optional[int] = None, div: int = 1) -> np.ndarray[Any, Any]:
     if max_images is not None:
         array = array[:max_images]
     if len(array.shape) == 4 and array.shape[3] == 1:
@@ -293,11 +314,11 @@ def tile_images(array: np.ndarray, n_cols: Optional[int] = None, max_images: Opt
         n_cols = max(int(np.sqrt(array.shape[0])) // div * div, div)
     n_rows = int(np.ceil(float(array.shape[0]) / n_cols))
 
-    def cell(i: int, j: int) -> np.ndarray:
+    def cell(i: int, j: int) -> np.ndarray[Any, Any]:
         ind = i * n_cols + j
         return array[ind] if ind < array.shape[0] else np.zeros(array[0].shape)
 
-    def row(i: int) -> np.ndarray:
+    def row(i: int) -> np.ndarray[Any, Any]:
         return np.concatenate([cell(i, j) for j in range(n_cols)], axis=1)
 
     return np.concatenate([row(i) for i in range(n_rows)], axis=0)

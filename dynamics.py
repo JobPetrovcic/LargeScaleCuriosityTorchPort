@@ -13,7 +13,7 @@ class DynamicsDenseBlock(nn.Module):
     Corresponds to: tf.layers.dense(add_ac(x), ...)
     """
     def __init__(self, input_dim: int, ac_dim: int, out_dim: int, activation: Optional[Callable] = None):
-        super().__init__()
+        super().__init__() # type:ignore
         self.fc = nn.Linear(input_dim + ac_dim, out_dim)
         self.activation = activation
         init_weights_fc(self.fc)
@@ -34,7 +34,7 @@ class DynamicsResidualBlock(nn.Module):
     return x + res
     """
     def __init__(self, hid_size: int, ac_dim: int):
-        super().__init__()
+        super().__init__() # type:ignore
         self.dense1 = DynamicsDenseBlock(hid_size, ac_dim, hid_size, activation=activ)
         self.dense2 = DynamicsDenseBlock(hid_size, ac_dim, hid_size, activation=None)
 
@@ -45,7 +45,7 @@ class DynamicsResidualBlock(nn.Module):
 
 class Dynamics(nn.Module):
     def __init__(self, auxiliary_task: FeatureExtractor, predict_from_pixels: bool, feat_dim: int, scope: str = 'dynamics'):
-        super().__init__()
+        super().__init__() # type:ignore
         self.scope = scope
         self.auxiliary_task = auxiliary_task
         self.hidsize = self.auxiliary_task.hidsize
@@ -93,10 +93,6 @@ class Dynamics(nn.Module):
         # Normalize using aux task stats
         mean = self.auxiliary_task.ob_mean
         std = self.auxiliary_task.ob_std
-        # Handle broadcasting
-        if mean.dim() == 3 and mean.shape[2] == x.shape[1]: 
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
         
         x = (x.float() - mean) / std
         x = self.feature_net(x) # type: ignore
@@ -125,37 +121,12 @@ class Dynamics(nn.Module):
             # "self.features = tf.stop_gradient(self.auxiliary_task.features)"
             features = self.auxiliary_task.get_features(obs).detach()
             
-            # If VAE, the aux task features might be the concatenated mean/std.
-            # VAE init says: "self.features = tf.split(..., 2)[0]"
-            # So VAE.get_features returns the concatenated, but the VAE class instance sets self.features to just mean?
-            # Let's check auxiliary_tasks.py again. 
-            # In VAE.__init__: "self.features = tf.split(self.features, 2, -1)[0]"
-            # But get_features returns the raw net output. 
-            # We must manually split if it is VAE.
             if hasattr(self.auxiliary_task, 'spherical_obs'): # It is VAE
-                 features = torch.chunk(features, 2, dim=-1)[0]
+                features = torch.chunk(features, 2, dim=-1)[0]
 
-        # Target features
-        # "self.out_features = self.auxiliary_task.next_features"
-        # We need to compute next_features.
-        # Aux task logic: next_features = concat(features[:, 1:], last_features)
-        # We need to replicate this logic here or call aux task methods.
-        
-        # Re-computing target features to be safe and explicit
         if self.predict_from_pixels:
-             # If predict from pixels, out_features is next_ob features using self.get_features
-             # But logic in init: "self.out_features = self.auxiliary_task.next_features"
-             # This implies we PREDICT the AUX task's next features (pixel based or VAE based), 
-             # even if we input pixel features.
-             # Wait, TF code: 
-             # "if predict_from_pixels: ... self.features = self.get_features(obs)"
-             # "self.out_features = self.auxiliary_task.next_features"
-             # So we predict the AUX task's next features using OUR pixel features.
-             pass
+            pass
         
-        # Get target features from aux task (detached)
-        # We can't easily access 'next_features' property without running the graph.
-        # We compute them:
         target_features_all = self.auxiliary_task.get_features(obs)
         target_last_features = self.auxiliary_task.get_features(last_obs)
         
@@ -167,8 +138,6 @@ class Dynamics(nn.Module):
         target_features = torch.cat([target_features_all[:, 1:], target_last_features], dim=1)
         target_features = target_features.detach()
 
-        # Prepare inputs for dynamics
-        # Flatten time dimension
         sh = features.shape
         x = flatten_two_dims(features) # (B*T, D)
         
@@ -178,20 +147,13 @@ class Dynamics(nn.Module):
         
         # Forward
         predicted_next_features = self.forward(x, ac_one_hot)
-        
-        # Loss
-        # "tf.reduce_mean((x - tf.stop_gradient(self.out_features)) ** 2, -1)"
-        # Mean over feature dim? Yes, -1.
-        # The result of get_loss in TF is (B, T) or (B*T)? 
-        # TF: x = unflatten_first_dim(x, sh). return reduce_mean(..., -1). 
-        # So returns (B, T).
-        
+         
         target_flat = flatten_two_dims(target_features)
         mse = torch.mean((predicted_next_features - target_flat) ** 2, dim=-1)
         
         return unflatten_first_dim(mse, sh)
 
-    def calculate_loss(self, ob: np.ndarray, last_ob: np.ndarray, acs: np.ndarray) -> np.ndarray:
+    def calculate_loss(self, ob: np.ndarray[Any, Any], last_ob: np.ndarray[Any, Any], acs: np.ndarray[Any, Any]) -> np.ndarray[Any, Any]:
         # Used for intrinsic reward calculation.
         # ob: numpy array (N, T, H, W, C) -> Need to transpose to NCHW
         # acs: numpy array
@@ -206,12 +168,13 @@ class Dynamics(nn.Module):
         # Note: input ob is (N, T, H, W, C).
         # We need to permute to (N, T, C, H, W).
         
-        def to_torch(arr: np.ndarray) -> torch.Tensor:
+        def to_torch(arr: np.ndarray[Any, Any]) -> torch.Tensor:
             t = torch.tensor(arr).to(self.auxiliary_task.ob_mean.device)
             if t.dim() == 5: # (N, T, H, W, C)
                 t = t.permute(0, 1, 4, 2, 3)
-            elif t.dim() == 4: # (N, 1, H, W, C) - last_ob
-                t = t.permute(0, 1, 4, 2, 3)
+            elif t.dim() == 4: # (N, H, W, C) - last_ob
+                t = t.permute(0, 3, 1, 2)
+            assert t.shape[-1] == t.shape[-2]
             return t.float()
 
         loss_list = []
@@ -277,13 +240,7 @@ class UNet(Dynamics):
         acs_flat = acs.view(-1).long()
         ac_one_hot = F.one_hot(acs_flat, self.ac_space_n).float()
         
-        # Predict
         predicted_pixels = self.forward(x, ac_one_hot)
-        
-        # Loss: (B*T, C, H, W) -> reduce mean over [C, H, W] -> (B*T)
-        # TF: reduce_mean(..., [2, 3, 4]) (NHWC) -> channels, h, w.
-        # Torch (NCHW): dims [1, 2, 3]
-        
         loss = torch.mean((predicted_pixels - flatten_two_dims(target_features)) ** 2, dim=[1, 2, 3])
         
         # Unflatten to (B, T)

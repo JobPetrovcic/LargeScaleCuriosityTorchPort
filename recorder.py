@@ -1,11 +1,10 @@
 import os
 import pickle
-from typing import List, Tuple, Optional, Union, Any, Dict
-from baselines import logger
+from typing import List, Any, Dict
+import logger
 
 class Recorder(object):
-    def __init__(self, nenvs: int, nlumps: int):
-        # nlumps is deprecated/unused in single-process version but kept for signature compatibility
+    def __init__(self, nenvs: int):
         self.nenvs = nenvs
         self.acs: List[List[Any]] = [[] for _ in range(nenvs)]
         self.int_rews: List[List[float]] = [[] for _ in range(nenvs)]
@@ -14,9 +13,9 @@ class Recorder(object):
         self.filenames = [self.get_filename(i) for i in range(nenvs)]
         
         # Always log since we are effectively Rank 0
-        logger.info("episode recordings saved to ", self.filenames[0])
+        logger.info(f"episode recordings saved to {self.filenames[0]}")
 
-    def record(self, timestep: int, lump: int, acs: Any, infos: List[Dict[str, Any]], int_rew: Any, ext_rew: Any, news: Any) -> None:
+    def record(self, timestep: int, acs: Any, infos: List[Dict[str, Any]], int_rew: Any, ext_rew: Any, news: Any) -> None:
         # lump argument is ignored
         # acs, int_rew, ext_rew, news are expected to be arrays of length nenvs
         

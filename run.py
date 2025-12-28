@@ -5,13 +5,13 @@ import yaml
 import torch
 import numpy as np
 import gym
-
-# Import baselines logger (or assume it exists)
-from baselines import logger
-from baselines.bench import Monitor
-from baselines.common import set_global_seeds
+import wandb
 
 # Local imports
+import logger
+from monitor import Monitor
+from common import set_global_seeds, NoopResetEnv
+
 from auxiliary_tasks import FeatureExtractor, InverseDynamics, VAE, JustPixels
 from cnn_policy import CnnPolicy
 from cppo_agent import PpoOptimizer
@@ -37,6 +37,9 @@ def start_experiment(hps):
         logdir = osp.join("/tmp", hps['exp_name'])
         logger.configure(dir=logdir)
     
+    # Initialize wandb
+    wandb.init(project="large-scale-curiosity", config=hps, dir=logdir)
+
     print(f"Results will be saved to {logdir}")
     
     # Set seeds
@@ -157,7 +160,7 @@ class Trainer(object):
         vector_env = AsyncVectorEnv(env_fns)
         vec_env_adapter = VecEnvAdapter(vector_env)
         
-        self.agent.start_interaction(vec_env_adapter, dynamics=self.dynamics, nlump=self.hps['nlumps'])
+        self.agent.start_interaction(vec_env_adapter, dynamics=self.dynamics)
         
         while True:
             info = self.agent.step()
@@ -168,7 +171,8 @@ class Trainer(object):
                 logger.dumpkvs()
             
             # Check termination
-            if self.agent.rollout.stats['tcount'] > self.num_timesteps:
+            total_steps = self.agent.n_updates * self.agent.rollout.nsteps * self.agent.rollout.nenvs
+            if total_steps > self.num_timesteps:
                 break
 
         self.agent.stop_interaction()
@@ -187,7 +191,7 @@ def make_env_all_params(rank, add_monitor, hps):
         # In modern gym, env.spec.id might be None if created via some paths, but usually fine.
         
         # Note: Baselines wrappers (NoopResetEnv) are often specific.
-        # We assume standard gym.wrappers or imported wrappers handle most.
+        # We assume standard gym.Wrapper[Any, Any]s or imported wrappers handle most.
         # But 'wrappers.py' imported above should contain all necessary custom wrappers.
         
         # We rely on gym's default Atari preprocessing? No, code uses manual wrappers.
@@ -195,13 +199,14 @@ def make_env_all_params(rank, add_monitor, hps):
         
         # In modern Gym, 'BreakoutNoFrameskip-v4' returns an environment that already outputs (210, 160, 3).
         
-        from baselines.common.atari_wrappers import NoopResetEnv
         env = NoopResetEnv(env, noop_max=hps['noop_max'])
         env = MaxAndSkipEnv(env, skip=4)
         env = ProcessFrame84(env, crop=False) # Config says crop=False in code logic? 
         # Original run.py: "env = ProcessFrame84(env, crop=False)"
         
-        from gym.wrappers import FrameStack
+        # from gym.Wrappers import FrameStack
+        # env = FrameStack(env, 4)
+        from wrappers import FrameStack
         env = FrameStack(env, 4)
         env = ExtraTimeLimit(env, hps['max_episode_steps'])
         
@@ -227,6 +232,11 @@ def make_env_all_params(rank, add_monitor, hps):
     return env
 
 if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to config file')
+    args = parser.parse_args()
+
     # Load config
-    hps = load_config("config.yaml")
+    hps = load_config(args.config)
     start_experiment(hps)

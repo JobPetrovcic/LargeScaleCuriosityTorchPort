@@ -7,9 +7,8 @@ from cnn_policy import CnnPolicy
 from dynamics import Dynamics
 
 class Rollout(object):
-    def __init__(self, ob_space: Any, ac_space: Any, nenvs: int, nsteps_per_seg: int, nsegs_per_env: int, nlumps: int, envs: Any, policy: CnnPolicy,
+    def __init__(self, ob_space: Any, ac_space: Any, nenvs: int, nsteps_per_seg: int, nsegs_per_env: int, envs: Any, policy: CnnPolicy,
                  int_rew_coeff: float, ext_rew_coeff: float, record_rollouts: bool, dynamics: Dynamics):
-        # nlumps is ignored/deprecated in this implementation
         self.nenvs = nenvs
         self.nsteps_per_seg = nsteps_per_seg
         self.nsegs_per_env = nsegs_per_env
@@ -46,7 +45,7 @@ class Rollout(object):
         self.buf_new_last = torch.zeros((nenvs,), dtype=torch.float32, device=self.device)
         self.buf_vpred_last = torch.zeros((nenvs,), dtype=torch.float32, device=self.device)
 
-        self.recorder = Recorder(nenvs=self.nenvs, nlumps=1) if record_rollouts else None
+        self.recorder = Recorder(nenvs=self.nenvs) if record_rollouts else None
         self.statlists: Dict[str, deque] = defaultdict(lambda: deque([], maxlen=100))
         self.stats: Dict[str, Any] = defaultdict(float)
         self.best_ext_ret: Optional[float] = None
@@ -80,7 +79,11 @@ class Rollout(object):
         
         n_chunks = 8
         n = self.nenvs
-        chunk_size = n // n_chunks
+        if n < n_chunks:
+            chunk_size = n
+            n_chunks = 1
+        else:
+            chunk_size = n // n_chunks
         
         int_rews = []
         
@@ -89,6 +92,9 @@ class Rollout(object):
                 # Handle potential uneven split if nenvs not divisible by 8 (though code asserted it)
                 start = i * chunk_size
                 end = min((i + 1) * chunk_size, n)
+                if i == n_chunks - 1:
+                    end = n # Ensure we cover everything
+                
                 if start >= n: break
                 
                 obs_chunk = self.buf_obs[start:end]
@@ -109,10 +115,6 @@ class Rollout(object):
         s = t % self.nsteps_per_seg
         
         # 1. Get Action from Policy
-        # We need current observation. 
-        # On step 0, we need to have reset or have prev observation.
-        # Logic in env_get handles reset on step_count=0.
-        
         obs, prevrews, news, infos = self.env_get()
         
         # Update infos
@@ -164,27 +166,10 @@ class Rollout(object):
 
         # Recorder (uses numpy)
         if self.recorder is not None:
-            # We need int_rew for recorder, but it's computed at end of rollout.
-            # Original code: "int_rew=self.int_rew[sli]" (cached from prev step calculation?)
-            # Original code calculated int_rew inside rollout_step loop if t>0?
-            # "if t > 0: dyn_logp = ... self.int_rew[sli] = int_rew"
-            # BUT the original code provided has that block COMMENTED OUT.
-            # "self.calculate_reward()" is called at end of collect_rollout.
-            # So int_rew passed to recorder during loop is likely 0s or stale?
-            # Original: `self.int_rew` init to zeros. It is updated in `calculate_reward`... 
-            # wait, `calculate_reward` updates `self.buf_rews`, not `self.int_rew`.
-            # Actually, looking at original `calculate_reward`:
-            # "int_rew = self.dynamics.calculate_loss..."
-            # "self.buf_rews[:] = ..."
-            # It does NOT update `self.int_rew`.
-            # So `self.int_rew` passed to recorder is always 0?
-            # Ah, I see commented out code that *would* have updated it. 
-            # Assuming the provided code is the source of truth, `int_rew` sent to recorder is 0.
-            # We will pass zeros or whatever is in `self.int_rew` (which we need to maintain if we want to be exact).
             
             # Let's keep a dummy int_rew buffer for recorder if needed, or pass 0.
-            current_int_rew = np.zeros(self.nenvs, dtype=np.float32)
-            self.recorder.record(timestep=self.step_count, lump=0, acs=acs_np, infos=infos, 
+            current_int_rew = np.zeros(self.nenvs, dtype=np.float32) # BIG TODO: fix
+            self.recorder.record(timestep=self.step_count, acs=acs_np, infos=infos, 
                                  int_rew=current_int_rew,
                                  ext_rew=prevrews, news=news)
 
@@ -192,13 +177,6 @@ class Rollout(object):
         
         # End of Segment/Rollout logic
         if s == self.nsteps_per_seg - 1:
-            # Get next obs (which is the result of the step we just took)
-            # In Async env, env_step triggers step. env_get retrieves it.
-            # But here we need to peek or wait?
-            # Original: `self.env_get(l)` called at start of loop.
-            # At end of loop (t=last), we need 'next_obs'.
-            # Original calls `self.env_get(l)` AGAIN here.
-            
             nextobs, ext_rews, nextnews, _ = self.env_get()
             
             # Convert
@@ -265,11 +243,11 @@ class Rollout(object):
         self.current_max = current_max
 
     # Wrapper methods for the single VecEnv to match original structure
-    def env_step(self, acs: np.ndarray) -> None:
+    def env_step(self, acs: np.ndarray[Any, Any]) -> None:
         self.envs.step_async(acs)
         self.env_result = None
 
-    def env_get(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+    def env_get(self) -> Tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], np.ndarray[Any, Any], List[Dict[str, Any]]]:
         # In step 0 or if explicitly called:
         if self.step_count == 0:
             ob = self.envs.reset()

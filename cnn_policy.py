@@ -1,16 +1,15 @@
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.distributions as dist
 import gym
-from typing import List, Tuple, Optional, Union, Any, Dict, Callable
+from typing import Tuple, Optional, Any, Dict, Callable
 from utils import SmallConvNet, flatten_two_dims, unflatten_first_dim, init_weights_fc, activ
 
 class CnnPolicy(nn.Module):
-    def __init__(self, ob_space: gym.Space, ac_space: gym.Space, hidsize: int,
-                 ob_mean: np.ndarray, ob_std: np.ndarray, feat_dim: int, layernormalize: bool, nl: Callable, scope: str = "policy"):
-        super().__init__()
+    def __init__(self, ob_space: gym.Space[Any], ac_space: gym.Space[Any], hidsize: int,
+                 ob_mean: np.ndarray[Any, Any], ob_std: np.ndarray[Any, Any], feat_dim: int, layernormalize: bool, nl: Callable, scope: str = "policy"):
+        super().__init__() # type:ignore
         self.layernormalize = layernormalize
         self.nl = nl
         self.ob_space = ob_space
@@ -56,17 +55,9 @@ class CnnPolicy(nn.Module):
             sh = x.shape
             x = flatten_two_dims(x)
         
-        # Normalize
-        # ob_mean is (H, W, C) or (C, H, W) depending on previous steps.
-        # utils.random_agent_ob_mean_std returns (H, W, C).
-        # We need to broadcast correctly to NCHW.
         mean = self.ob_mean
         std = self.ob_std
-        
-        # If mean is (H, W, C), permute to (C, H, W)
-        if mean.dim() == 3 and mean.shape[2] == x.shape[1]:
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
+
         
         x = (x.float() - mean) / std
         x = self.feature_net(x)
@@ -112,7 +103,7 @@ class CnnPolicy(nn.Module):
         
         return a_samp, vpred, nlp, entropy, pdparam
 
-    def get_ac_value_nlp(self, ob: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def get_ac_value_nlp(self, ob: np.ndarray[Any, Any]) -> Tuple[np.ndarray[Any, Any], np.ndarray[Any, Any], np.ndarray[Any, Any]]:
         # Interface for rollouts.py
         # ob is numpy array: (Batch, H, W, C) -- Note: Rollouts pass (Batch, H, W, C)
         # But wait, rollouts.py: "self.ph_ob: ob[:, None]" -> Adds time dimension?
@@ -126,10 +117,11 @@ class CnnPolicy(nn.Module):
         
         # Handle Channel First/Last
         # Env gives NHWC. We want NCHW.
-        ob_tensor = ob_tensor.permute(0, 3, 1, 2)
+        ob_tensor = ob_tensor.unsqueeze(1)
+
+        assert ob_tensor.dim() == 5
         
         # Add Time Dim: (B, 1, C, H, W)
-        ob_tensor = ob_tensor.unsqueeze(1)
         
         with torch.no_grad():
             a_samp, vpred, nlp, _, _ = self.forward(ob_tensor)

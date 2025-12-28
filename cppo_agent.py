@@ -13,10 +13,10 @@ from cnn_policy import CnnPolicy
 
 class RewardForwardFilter(object):
     def __init__(self, gamma: float):
-        self.rewems: Optional[Union[np.ndarray, torch.Tensor]] = None
+        self.rewems: Optional[Union[np.ndarray[Any, Any], torch.Tensor]] = None
         self.gamma = gamma
 
-    def update(self, rews: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
+    def update(self, rews: Union[np.ndarray[Any, Any], torch.Tensor]) -> Union[np.ndarray[Any, Any], torch.Tensor]:
         # rews: numpy array or tensor? 
         # rollouts.py buf_rews is Tensor.
         # But this filter runs on CPU usually? 
@@ -53,6 +53,7 @@ class PpoOptimizer(object):
         self.use_news = use_news
         self.ext_coeff = ext_coeff
         self.int_coeff = int_coeff
+        self.ent_coeff = ent_coef
         self.dynamics = dynamics
         self.device = stochpol.ob_mean.device
         
@@ -66,20 +67,25 @@ class PpoOptimizer(object):
         # We need to ensure we get all trainable params.
         
         self.params = list(self.stochpol.parameters()) + list(self.dynamics.parameters())
+        # remove duplicates
+        self.params = list({id(p): p for p in self.params}.values())
         self.optimizer = optim.Adam(self.params, lr=self.lr, eps=1e-8)
         
         self.loss_names = ['tot', 'pg', 'vf', 'ent', 'approxkl', 'clipfrac', 'aux', 'dyn_loss', 'feat_var']
         self.to_report: Dict[str, float] = {} # Placeholder
 
-    def start_interaction(self, envs: Any, dynamics: Dynamics, nlump: int = 1) -> None:
+    def start_interaction(
+            self, 
+            envs: Any, 
+            dynamics: Dynamics # BIG TODO: why is this unused?
+        ) -> None:
         self.nenvs = envs.num_envs
-        self.nlump = nlump # Unused in single gpu vecenv
         self.envs = envs
         
         # Initialize Rollout storage
         self.rollout = Rollout(ob_space=self.ob_space, ac_space=self.ac_space, nenvs=self.nenvs,
                                nsteps_per_seg=self.nsteps_per_seg,
-                               nsegs_per_env=self.nsegs_per_env, nlumps=self.nlump,
+                               nsegs_per_env=self.nsegs_per_env,
                                envs=self.envs,
                                policy=self.stochpol,
                                int_rew_coeff=self.int_coeff,

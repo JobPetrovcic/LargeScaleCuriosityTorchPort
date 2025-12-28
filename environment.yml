@@ -24,5 +24,4 @@ dependencies:
     - gym-retro        # For Mario/Sonic environments
     - cloudpickle
     - pillow
-    # We install baselines for the logger/monitor dependencies
-    - git+https://github.com/openai/baselines.git
+    - wandb

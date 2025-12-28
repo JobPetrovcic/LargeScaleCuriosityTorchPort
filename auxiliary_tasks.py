@@ -2,14 +2,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as dist
-import numpy as np
-from typing import List, Tuple, Optional, Union, Any, Dict
+from typing import Optional
 from utils import SmallConvNet, SmallDeconvNet, flatten_two_dims, unflatten_first_dim, init_weights_fc, activ
 from cnn_policy import CnnPolicy
 
 class FeatureExtractor(nn.Module):
     def __init__(self, policy: CnnPolicy, features_shared_with_policy: bool, feat_dim: Optional[int] = None, layernormalize: Optional[bool] = None, scope: str = 'feature_extractor'):
-        super().__init__()
+        super().__init__() # type:ignore
         self.scope = scope
         self.features_shared_with_policy = features_shared_with_policy
         self.feat_dim = feat_dim
@@ -39,19 +38,9 @@ class FeatureExtractor(nn.Module):
             sh = x.shape
             x = flatten_two_dims(x)
         
-        # Normalize: (x - mean) / std
-        # Note: ob_mean is usually (C, H, W) or (1, C, H, W).
-        # We rely on broadcasting. 
-        # TF code: (tf.to_float(x) - self.ob_mean) / self.ob_std
-        # TF moments were calculated on NHWC, so mean/std are NHWC.
-        # We must align dimensions.
-        # If ob_mean is (H, W, C), we need to permute it to (C, H, W) to match x.
-        
         mean = self.ob_mean
+        assert mean.shape == x.shape[-3:]
         std = self.ob_std
-        if mean.dim() == 3 and mean.shape[2] == x.shape[1]: # HWC -> CHW
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
         
         x = (x.float() - mean) / std
         x = self.feature_net(x)
@@ -96,7 +85,6 @@ class InverseDynamics(FeatureExtractor):
         
         # Input to IDM
         x = torch.cat([features, next_features], dim=2) # (B, T, 2*feat_dim)
-        sh = x.shape
         x = flatten_two_dims(x)
         
         x = activ(self.fc1(x))
@@ -150,9 +138,7 @@ class VAE(FeatureExtractor):
         # Normalize
         mean = self.ob_mean
         std = self.ob_std
-        if mean.dim() == 3 and mean.shape[2] == x.shape[1]: 
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
+        assert mean.shape == x.shape[-3:]
 
         x_has_timesteps = (x.dim() == 5)
         if x_has_timesteps:
@@ -222,14 +208,11 @@ class VAE(FeatureExtractor):
     def add_noise_and_normalize(self, x: torch.Tensor) -> torch.Tensor:
         # x is (B, C, H, W) or (B, T, C, H, W)
         # Add uniform noise [0, 1]
-        noise = torch.rand_as(x)
+        noise = torch.rand_like(x.float())
         x = x.float() + noise
         
         mean = self.ob_mean
         std = self.ob_std
-        if mean.dim() == 3 and mean.shape[2] == x.shape[-3]: # Match C dim
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
              
         return (x - mean) / std
 
@@ -248,9 +231,6 @@ class JustPixels(FeatureExtractor):
         # x: (B, T, C, H, W) or (B, C, H, W)
         mean = self.ob_mean
         std = self.ob_std
-        if mean.dim() == 3 and mean.shape[2] == x.shape[-3]:
-             mean = mean.permute(2, 0, 1)
-             std = std.permute(2, 0, 1)
         
         return (x.float() - mean) / std
 
