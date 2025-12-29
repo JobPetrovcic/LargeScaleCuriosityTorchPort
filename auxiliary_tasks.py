@@ -28,7 +28,10 @@ class FeatureExtractor(nn.Module):
             # Detect input channels from ob_space
             # Gym spaces are usually (H, W, C). We need C.
             in_channels = self.ob_space.shape[-1] # type: ignore
-            self.feature_net = SmallConvNet(in_channels, feat_dim, activ, None, layernormalize) # type: ignore
+            if feat_dim is not None:
+                self.feature_net = SmallConvNet(in_channels, feat_dim, activ, None, layernormalize) # type: ignore
+            else:
+                self.feature_net = None
 
     def get_features(self, x: torch.Tensor) -> torch.Tensor:
         # x: (B, T, C, H, W) or (B, C, H, W)

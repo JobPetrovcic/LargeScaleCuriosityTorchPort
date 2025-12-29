@@ -1,0 +1,31 @@
+# Environment parameters
+env: "BreakoutNoFrameskip-v4"
+env_kind: "atari"
+max_episode_steps: 4500
+noop_max: 30
+
+# Optimization parameters
+lambda: 0.95
+gamma: 0.99
+nminibatches: 8
+norm_adv: 1
+norm_rew: 1
+lr: 0.0001
+ent_coeff: 0.001
+nepochs: 3
+num_timesteps: 100000000
+
+# Rollout parameters
+nsteps_per_seg: 128
+nsegs_per_env: 1
+envs_per_process: 128
+
+# Experiment parameters
+exp_name: "random_features"
+seed: 0
+dyn_from_pixels: 0
+use_news: 0
+ext_coeff: 0.0
+int_coeff: 1.0
+layernorm: 0
+feat_learning: "none"  # <--- Key setting for RF

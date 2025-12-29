@@ -65,7 +65,10 @@ class Trainer(object):
         self.hps = hps
         self.envs_per_process = envs_per_process
         self.num_timesteps = num_timesteps
-        self.device = getsess() # Returns torch device
+        if 'device' in hps:
+            self.device = torch.device(hps['device'])
+        else:
+            self.device = getsess() # Returns torch device
 
         # 1. Setup Environment Variables (Spaces, Normalization stats)
         self._set_env_vars()
@@ -235,8 +238,14 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to config file')
+    parser.add_argument('--device', type=str, default=None, help='Device to run on (e.g. cuda:0, cpu)')
+    parser.add_argument('--env', type=str, default=None, help='Environment name')
     args = parser.parse_args()
 
     # Load config
     hps = load_config(args.config)
+    if args.device:
+        hps['device'] = args.device
+    if args.env:
+        hps['env'] = args.env
     start_experiment(hps)
