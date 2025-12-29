@@ -16,7 +16,10 @@ class DynamicsDenseBlock(nn.Module):
         super().__init__() # type:ignore
         self.fc = nn.Linear(input_dim + ac_dim, out_dim)
         self.activation = activation
-        init_weights_fc(self.fc)
+        
+        nn.init.xavier_uniform_(self.fc.weight)
+        if self.fc.bias is not None:
+            nn.init.constant_(self.fc.bias, 0.0)
 
     def forward(self, x: torch.Tensor, ac_one_hot: torch.Tensor) -> torch.Tensor:
         # x: (B, D), ac: (B, A)
@@ -63,19 +66,8 @@ class Dynamics(nn.Module):
         else:
             self.feature_net = None
 
-        # Build the Dynamics Network (MLP)
-        # Structure from TF:
-        # x = dense(add_ac(features), hid, leaky)
-        # 4x residual(x)
-        # x = dense(add_ac(x), out_dim, None)
         
         # Input dim is feat_dim (if from pixels or aux) 
-        # But wait, aux task features might be different size?
-        # auxiliary_tasks.py: "FeatureExtractor ... feat_dim=512".
-        # VAE uses 2*feat_dim internally but exposes split features? 
-        # VAE init: "self.features = tf.split(self.features, 2, -1)[0]"
-        # So effective input dim is feat_dim.
-        
         input_dim = self.feat_dim
         
         self.first_dense = DynamicsDenseBlock(input_dim, self.ac_space_n, self.hidsize, activation=activ)
