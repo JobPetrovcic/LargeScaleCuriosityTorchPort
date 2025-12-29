@@ -239,6 +239,7 @@ class UNet(nn.Module):
 
     def _init_layers(self, c: int, ac_dim: int, device: torch.device) -> None:
         self.ac_dim = ac_dim
+        # Encoder
         self.enc1 = Conv2dSame(c, 32, 8, stride=3).to(device)
         self.enc2 = Conv2dSame(32 + ac_dim, 64, 8, stride=2).to(device)
         self.enc3 = Conv2dSame(64 + ac_dim, 64, 4, stride=2).to(device)
@@ -246,14 +247,21 @@ class UNet(nn.Module):
         self.flat_dim = 8 * 8 * (64 + ac_dim)
         self.fc_in = nn.Linear(self.flat_dim, self.feat_dim).to(device)
         
+        # Residual Blocks
         self.res_fc1 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim).to(device) for _ in range(4)])
         self.res_fc2 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim).to(device) for _ in range(4)])
         
         self.fc_out = nn.Linear(self.feat_dim + ac_dim, 8*8*64).to(device)
         
+        # Decoder (using ADDITION for skip connections, so channel counts match the ADDED output)
+        # Skip 1: z_out (64) + l3 (64) = 64. Dec1 input = 64 + ac_dim.
         self.dec1 = ConvTranspose2dSame(64 + ac_dim, 64, 4, stride=2).to(device)
-        self.dec2 = ConvTranspose2dSame(64 + 64 + ac_dim, 32, 8, stride=2).to(device)
-        self.dec3 = ConvTranspose2dSame(32 + 32 + ac_dim, 4, 8, stride=3).to(device)
+        
+        # Skip 2: d1 (64) + l2 (64) = 64. Dec2 input = 64 + ac_dim.
+        self.dec2 = ConvTranspose2dSame(64 + ac_dim, 32, 8, stride=2).to(device)
+        
+        # Skip 3: d2 (32) + l1 (32) = 32. Dec3 input = 32 + ac_dim.
+        self.dec3 = ConvTranspose2dSame(32 + ac_dim, 4, 8, stride=3).to(device)
         
         self.apply(init_weights_conv)
         self.apply(init_weights_fc)
@@ -277,10 +285,12 @@ class UNet(nn.Module):
         if not self.initialized:
             self._init_layers(x_in.shape[1], ac_one_hot.shape[1], x.device)
 
+        # Encoder
         l1 = self.nl(self.enc1(x_in))
         l2 = self.nl(self.enc2(cond(l1)))
         l3 = self.nl(self.enc3(cond(l2)))
         
+        # Bottleneck
         flat = cond(l3).reshape(l3.size(0), -1)
         z = self.nl(self.fc_in(flat))
         
@@ -292,11 +302,14 @@ class UNet(nn.Module):
         z_out = self.nl(self.fc_out(cond(z)))
         z_out = z_out.view(-1, 64, 8, 8)
         
+        # Decoder with Additive Skip Connections
         z_out = z_out + l3
         d1 = self.nl(self.dec1(cond(z_out)))
-        d1 = torch.cat([d1, l2], dim=1)
+        
+        d1 = d1 + l2
         d2 = self.nl(self.dec2(cond(d1)))
-        d2 = torch.cat([d2, l1], dim=1)
+        
+        d2 = d2 + l1
         out = self.dec3(cond(d2))
         
         out = out[:, :, 6:-6, 6:-6]
