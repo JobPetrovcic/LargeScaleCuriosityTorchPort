@@ -46,7 +46,8 @@ class FeatureExtractor(nn.Module):
         std = self.ob_std
         
         x = (x.float() - mean) / std
-        x = self.feature_net(x)
+        if self.feature_net:
+            x = self.feature_net(x)
         
         if x_has_timesteps:
             x = unflatten_first_dim(x, sh)
@@ -68,6 +69,7 @@ class InverseDynamics(FeatureExtractor):
         self.fc1 = nn.Linear(input_dim, self.policy.hidsize)
         self.fc2 = nn.Linear(self.policy.hidsize, self.ac_space.n) # type: ignore
         
+        # Original uses utils.fc which uses Normc
         init_weights_fc(self.fc1)
         init_weights_fc(self.fc2)
 
@@ -121,6 +123,7 @@ class VAE(FeatureExtractor):
         # If not shared, we need our own net with double output
         if not features_shared_with_policy:
             in_channels = self.ob_space.shape[-1] # type: ignore
+            # Original uses SmallConvNet so it uses Normc (default init_weights_conv/fc in our port)
             self.feature_net = SmallConvNet(in_channels, 2 * feat_dim, activ, None, layernormalize=False)
         
         # Decoder
