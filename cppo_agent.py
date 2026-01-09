@@ -59,7 +59,7 @@ class PpoOptimizer(object):
         self.params = list({id(p): p for p in self.params}.values())
         self.optimizer = optim.Adam(self.params, lr=self.lr, eps=1e-8)
         
-        self.loss_names = ['tot', 'pg', 'vf', 'ent', 'approxkl', 'clipfrac', 'aux', 'dyn_loss', 'feat_var']
+        self.loss_names = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance']
         self.to_report: Dict[str, float] = {}
 
     def start_interaction(
@@ -148,18 +148,18 @@ class PpoOptimizer(object):
         self.calculate_advantages(rews=rews, use_news=self.use_news, gamma=self.gamma, lam=self.lam)
 
         info = dict(
-            advmean=self.buf_advs.mean().item(),
-            advstd=self.buf_advs.std(unbiased=False).item(),
-            retmean=self.buf_rets.mean().item(),
-            retstd=self.buf_rets.std(unbiased=False).item(),
-            vpredmean=self.rollout.buf_vpreds.mean().item(),
-            vpredstd=self.rollout.buf_vpreds.std(unbiased=False).item(),
-            ev=1.0 - (torch.var(self.buf_rets - self.rollout.buf_vpreds, unbiased=False) / (torch.var(self.buf_rets, unbiased=False) + 1e-8)).item(),
-            rew_mean=torch.mean(self.rollout.buf_rews).item(),
-            recent_best_ext_ret=self.rollout.current_max
+            advantage_mean=self.buf_advs.mean().item(),
+            advantage_std=self.buf_advs.std(unbiased=False).item(),
+            return_mean=self.buf_rets.mean().item(),
+            return_std=self.buf_rets.std(unbiased=False).item(),
+            value_prediction_mean=self.rollout.buf_vpreds.mean().item(),
+            value_prediction_std=self.rollout.buf_vpreds.std(unbiased=False).item(),
+            explained_variance=1.0 - (torch.var(self.buf_rets - self.rollout.buf_vpreds, unbiased=False) / (torch.var(self.buf_rets, unbiased=False) + 1e-8)).item(),
+            reward_mean=torch.mean(self.rollout.buf_rews).item(),
+            recent_best_extrinsic_return=self.rollout.current_max
         )
         if self.rollout.best_ext_ret is not None:
-            info['best_ext_ret'] = self.rollout.best_ext_ret
+            info['best_extrinsic_return'] = self.rollout.best_ext_ret
 
         # normalize advantages
         if self.normadv:
@@ -252,11 +252,11 @@ class PpoOptimizer(object):
                 mblossvals.append([loss.item(), pg_loss.item(), vf_loss.item(), ent_loss.item(), 
                                   approxkl.item(), clipfrac.item(), aux_loss.item(), dyn_loss_mean.item(), feat_var.item()])
 
-        loss_names_full = ['tot', 'pg', 'vf', 'ent', 'approxkl', 'clipfrac', 'aux', 'dyn_loss', 'feat_var']
+        loss_names_full = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance']
         mean_losses = np.mean(mblossvals, axis=0)
         
         for i, name in enumerate(loss_names_full):
-            info['opt_' + name] = mean_losses[i]
+            info['optimization_' + name] = mean_losses[i]
 
         self.n_updates += 1
         info["n_updates"] = self.n_updates
@@ -268,9 +268,9 @@ class PpoOptimizer(object):
             info.pop("states_visited")
             
         tnow = time.time()
-        info["ups"] = 1. / (tnow - self.t_last_update)
-        info["total_secs"] = tnow - self.t_start
-        info['tps'] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
+        info["updates_per_second"] = 1. / (tnow - self.t_last_update)
+        info["total_seconds"] = tnow - self.t_start
+        info['timesteps_per_second'] = self.rollout.nsteps * self.nenvs / (tnow - self.t_last_update)
         self.t_last_update = tnow
 
         return info
