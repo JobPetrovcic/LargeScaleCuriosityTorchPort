@@ -166,8 +166,8 @@ def test_ppo_optimizer_step():
     
     assert 'update' in result
     info = result['update']
-    assert 'opt_tot' in info
-    assert 'opt_pg' in info
-    assert 'opt_dyn_loss' in info
+    assert 'optimization_total_loss' in info
+    assert 'optimization_policy_gradient_loss' in info
+    assert 'optimization_dynamics_loss' in info
     assert info['n_updates'] == 1
 
