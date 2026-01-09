@@ -38,7 +38,7 @@ def start_experiment(hps):
         logger.configure(dir=logdir)
     
     # Initialize wandb
-    wandb.init(project="large-scale-curiosity", config=hps, dir=logdir)
+    wandb.init(project="large-scale-curiosity", config=hps, dir=logdir, name=hps.get('run_name'))
 
     print(f"Results will be saved to {logdir}")
     
@@ -240,6 +240,7 @@ if __name__ == '__main__':
     parser.add_argument('--config', type=str, default='configs/config.yaml', help='Path to config file')
     parser.add_argument('--device', type=str, default=None, help='Device to run on (e.g. cuda:0, cpu)')
     parser.add_argument('--env', type=str, default=None, help='Environment name')
+    parser.add_argument('--name', type=str, default=None, help='Wandb run name')
     args = parser.parse_args()
 
     # Load config
@@ -248,4 +249,6 @@ if __name__ == '__main__':
         hps['device'] = args.device
     if args.env:
         hps['env'] = args.env
+    if args.name:
+        hps['run_name'] = args.name
     start_experiment(hps)

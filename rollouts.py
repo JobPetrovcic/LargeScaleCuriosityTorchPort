@@ -206,15 +206,15 @@ class Rollout(object):
             keys_ = all_ep_infos_vals[0].keys()
             all_ep_infos_dict = {k: [i[k] for i in all_ep_infos_vals] for k in keys_}
 
-            self.statlists['eprew'].extend(all_ep_infos_dict['r'])
-            self.stats['eprew_recent'] = np.mean(all_ep_infos_dict['r'])
-            self.statlists['eplen'].extend(all_ep_infos_dict['l'])
-            self.stats['epcount'] += len(all_ep_infos_dict['l'])
-            self.stats['tcount'] += sum(all_ep_infos_dict['l'])
+            self.statlists['episode_reward'].extend(all_ep_infos_dict['r'])
+            self.stats['episode_reward_recent'] = np.mean(all_ep_infos_dict['r'])
+            self.statlists['episode_length'].extend(all_ep_infos_dict['l'])
+            self.stats['episode_count'] += len(all_ep_infos_dict['l'])
+            self.stats['total_timesteps'] += sum(all_ep_infos_dict['l'])
             
             if 'visited_rooms' in keys_:
                 self.stats['visited_rooms'] = sorted(list(set.union(*all_ep_infos_dict['visited_rooms'])))
-                self.stats['pos_count'] = np.mean(all_ep_infos_dict['pos_count'])
+                self.stats['position_count'] = np.mean(all_ep_infos_dict['pos_count'])
                 self.all_visited_rooms.extend(self.stats['visited_rooms'])
                 self.all_scores.extend(all_ep_infos_dict["r"])
                 self.all_scores = sorted(list(set(self.all_scores)))

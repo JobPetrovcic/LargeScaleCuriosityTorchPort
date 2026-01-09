@@ -30,16 +30,16 @@ echo "Starting runs for environment: $ENV_NAME"
 # We use the --device argument we added to run.py
 
 echo "Launching Inverse Dynamics on cuda:0"
-python run.py --config configs/inverse_dynamics.yaml --env "$ENV_NAME" --device cuda:0 &
+python run.py --config configs/inverse_dynamics.yaml --env "$ENV_NAME" --device cuda:0 --name "inverse_dynamics_${ENV_NAME}" &
 
 echo "Launching Pixels on cuda:1"
-python run.py --config configs/pixels.yaml --env "$ENV_NAME" --device cuda:1 &
+python run.py --config configs/pixels.yaml --env "$ENV_NAME" --device cuda:1 --name "pixels_${ENV_NAME}" &
 
 echo "Launching Random Features on cuda:2"
-python run.py --config configs/random_features.yaml --env "$ENV_NAME" --device cuda:2 &
+python run.py --config configs/random_features.yaml --env "$ENV_NAME" --device cuda:2 --name "random_features_${ENV_NAME}" &
 
 echo "Launching VAE on cuda:3"
-python run.py --config configs/vae.yaml --env "$ENV_NAME" --device cuda:3 &
+python run.py --config configs/vae.yaml --env "$ENV_NAME" --device cuda:3 --name "vae_${ENV_NAME}" &
 
 # Wait for all background processes to finish
 wait
