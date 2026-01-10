@@ -16,7 +16,7 @@ from auxiliary_tasks import FeatureExtractor, InverseDynamics, VAE, JustPixels
 from cnn_policy import CnnPolicy
 from cppo_agent import PpoOptimizer
 from dynamics import Dynamics, UNet
-from utils import random_agent_ob_mean_std, getsess
+from utils import random_agent_ob_mean_std, getdevice
 from wrappers import (
     MontezumaInfoWrapper, make_mario_env, make_robo_pong, make_robo_hockey,
     make_multi_pong, AddRandomStateToInfo, MaxAndSkipEnv, ProcessFrame84,
@@ -68,7 +68,7 @@ class Trainer(object):
         if 'device' in hps:
             self.device = torch.device(hps['device'])
         else:
-            self.device = getsess() # Returns torch device
+            self.device = getdevice() # Returns torch device
 
         # 1. Setup Environment Variables (Spaces, Normalization stats)
         self._set_env_vars()

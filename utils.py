@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def getsess() -> torch.device:
+def getdevice() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def setup_mpi_gpus() -> None:
@@ -17,12 +17,6 @@ def setup_mpi_gpus() -> None:
 
 def guess_available_cpus() -> int:
     return multiprocessing.cpu_count()
-
-def setup_tensorflow_session() -> None:
-    return None
-
-def bcast_tf_vars_from_root(sess: Any, vars: Any) -> None:
-    pass
 
 def get_mean_and_std(array: np.ndarray[Any, Any]) -> Tuple[float, float]:
     mean = np.mean(array)
