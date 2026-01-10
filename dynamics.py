@@ -198,7 +198,7 @@ class UNet(Dynamics):
         
         # Override the network with UNet
         in_channels = self.auxiliary_task.ob_space.shape[-1] # type: ignore
-        self.unet = UNetNetwork(in_channels, feat_dim, activ) # defined in utils as UNet
+        self.unet = UNetNetwork(in_channels, feat_dim, activ, ac_dim=self.ac_space_n) # defined in utils as UNet
         
         # TF logic stores a prediction_pixels variable. 
         # We'll need to replicate that if it's used elsewhere, but likely only for viz.

@@ -59,7 +59,7 @@ class PpoOptimizer(object):
         self.params = list({id(p): p for p in self.params}.values())
         self.optimizer = optim.Adam(self.params, lr=self.lr, eps=1e-8)
         
-        self.loss_names = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance']
+        self.loss_names = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance', 'feature_std', 'feature_mean', 'inverse_dynamics_accuracy']
         self.to_report: Dict[str, float] = {}
 
     def start_interaction(
@@ -180,6 +180,15 @@ class PpoOptimizer(object):
 
         b_obs = resh(self.rollout.buf_obs)
         b_acs = resh(self.rollout.buf_acs)
+
+        # Action frequency logging
+        with torch.no_grad():
+            acs_flat = b_acs.reshape(-1).long()
+            counts = torch.bincount(acs_flat, minlength=self.ac_space.n)
+            freqs = counts.float() / counts.sum()
+            for i in range(self.ac_space.n):
+                info[f'action_freq_{i}'] = freqs[i].item()
+        
         b_vpreds = resh(self.rollout.buf_vpreds)
         b_nlps = resh(self.rollout.buf_nlps)
         b_rets = resh(self.buf_rets)
@@ -242,6 +251,12 @@ class PpoOptimizer(object):
                 with torch.no_grad():
                     feats = self.dynamics.auxiliary_task.get_features(mb_obs)
                     feat_var = feats.var(dim=[0, 1], unbiased=False).mean()
+                    feat_std = feats.std(dim=[0, 1], unbiased=False).mean()
+                    feat_mean = feats.mean().item()
+
+                    id_acc = 0.0
+                    if hasattr(self.dynamics.auxiliary_task, 'last_accuracy'):
+                        id_acc = self.dynamics.auxiliary_task.last_accuracy.item()
                     
                 loss = pg_loss + vf_loss + ent_loss + dyn_loss_mean + aux_loss
                 
@@ -250,9 +265,9 @@ class PpoOptimizer(object):
                 self.optimizer.step()
                 
                 mblossvals.append([loss.item(), pg_loss.item(), vf_loss.item(), ent_loss.item(), 
-                                  approxkl.item(), clipfrac.item(), aux_loss.item(), dyn_loss_mean.item(), feat_var.item()])
+                                  approxkl.item(), clipfrac.item(), aux_loss.item(), dyn_loss_mean.item(), feat_var.item(), feat_std.item(), feat_mean, id_acc])
 
-        loss_names_full = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance']
+        loss_names_full = ['total_loss', 'policy_gradient_loss', 'value_function_loss', 'entropy_loss', 'approximate_kl_divergence', 'clip_fraction', 'auxiliary_loss', 'dynamics_loss', 'feature_variance', 'feature_std', 'feature_mean', 'inverse_dynamics_accuracy']
         mean_losses = np.mean(mblossvals, axis=0)
         
         for i, name in enumerate(loss_names_full):

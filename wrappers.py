@@ -477,6 +477,14 @@ class VecEnvAdapter:
                     if hasattr(v, '__len__') and len(v) == self.num_envs:
                          for i in range(self.num_envs):
                              new_infos[i][k] = v[i]
+                
+                # Propagate episode info from final_info if present (some versions of gym do this)
+                for i in range(self.num_envs):
+                    if 'final_info' in new_infos[i]:
+                        fi = new_infos[i]['final_info']
+                        if isinstance(fi, dict) and 'episode' in fi:
+                            new_infos[i]['episode'] = fi['episode']
+
                 infos = new_infos
 
             return obs, rews, dones, infos

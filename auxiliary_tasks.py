@@ -98,6 +98,11 @@ class InverseDynamics(FeatureExtractor):
         # Loss
         # acs is (B, T). Flatten to (B*T)
         acs_flat = acs.view(-1)
+        
+        # Calculate accuracy
+        preds = torch.argmax(logits, dim=1)
+        self.last_accuracy = (preds == acs_flat.long()).float().mean()
+        
         return F.cross_entropy(logits, acs_flat.long())
 
 

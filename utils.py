@@ -230,42 +230,41 @@ class SmallDeconvNet(nn.Module):
         return z
 
 class UNet(nn.Module):
-    def __init__(self, in_channels: int, feat_dim: int, nl: Callable[[torch.Tensor], torch.Tensor]):
+    def __init__(self, in_channels: int, feat_dim: int, nl: Callable[[torch.Tensor], torch.Tensor], ac_dim: int):
         super().__init__() # type:ignore
         self.in_channels = in_channels
         self.feat_dim = feat_dim
         self.nl = nl
-        self.initialized = False
-
-    def _init_layers(self, c: int, ac_dim: int, device: torch.device) -> None:
         self.ac_dim = ac_dim
+
+        c = in_channels + ac_dim
+        
         # Encoder
-        self.enc1 = Conv2dSame(c, 32, 8, stride=3).to(device)
-        self.enc2 = Conv2dSame(32 + ac_dim, 64, 8, stride=2).to(device)
-        self.enc3 = Conv2dSame(64 + ac_dim, 64, 4, stride=2).to(device)
+        self.enc1 = Conv2dSame(c, 32, 8, stride=3)
+        self.enc2 = Conv2dSame(32 + ac_dim, 64, 8, stride=2)
+        self.enc3 = Conv2dSame(64 + ac_dim, 64, 4, stride=2)
         
         self.flat_dim = 8 * 8 * (64 + ac_dim)
-        self.fc_in = nn.Linear(self.flat_dim, self.feat_dim).to(device)
+        self.fc_in = nn.Linear(self.flat_dim, self.feat_dim)
         
         # Residual Blocks
-        self.res_fc1 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim).to(device) for _ in range(4)])
-        self.res_fc2 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim).to(device) for _ in range(4)])
+        self.res_fc1 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim) for _ in range(4)])
+        self.res_fc2 = nn.ModuleList([nn.Linear(self.feat_dim + ac_dim, self.feat_dim) for _ in range(4)])
         
-        self.fc_out = nn.Linear(self.feat_dim + ac_dim, 8*8*64).to(device)
+        self.fc_out = nn.Linear(self.feat_dim + ac_dim, 8*8*64)
         
         # Decoder (using ADDITION for skip connections, so channel counts match the ADDED output)
         # Skip 1: z_out (64) + l3 (64) = 64. Dec1 input = 64 + ac_dim.
-        self.dec1 = ConvTranspose2dSame(64 + ac_dim, 64, 4, stride=2).to(device)
+        self.dec1 = ConvTranspose2dSame(64 + ac_dim, 64, 4, stride=2)
         
         # Skip 2: d1 (64) + l2 (64) = 64. Dec2 input = 64 + ac_dim.
-        self.dec2 = ConvTranspose2dSame(64 + ac_dim, 32, 8, stride=2).to(device)
+        self.dec2 = ConvTranspose2dSame(64 + ac_dim, 32, 8, stride=2)
         
         # Skip 3: d2 (32) + l1 (32) = 32. Dec3 input = 32 + ac_dim.
-        self.dec3 = ConvTranspose2dSame(32 + ac_dim, 4, 8, stride=3).to(device)
+        self.dec3 = ConvTranspose2dSame(32 + ac_dim, 4, 8, stride=3)
         
         self.apply(init_weights_conv)
         self.apply(init_weights_fc)
-        self.initialized = True
 
     def forward(self, x: torch.Tensor, ac_one_hot: torch.Tensor) -> torch.Tensor:
         assert x.shape[1] == self.in_channels, f"Input channel mismatch: expected {self.in_channels}, got {x.shape[1]}"
@@ -282,9 +281,6 @@ class UNet(nn.Module):
         x_pad = F.pad(x, (6, 6, 6, 6))
         x_in = cond(x_pad)
         
-        if not self.initialized:
-            self._init_layers(x_in.shape[1], ac_one_hot.shape[1], x.device)
-
         # Encoder
         l1 = self.nl(self.enc1(x_in))
         l2 = self.nl(self.enc2(cond(l1)))
